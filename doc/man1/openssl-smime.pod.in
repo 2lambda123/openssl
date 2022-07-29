@@ -19,6 +19,7 @@ B<openssl> B<smime>
 [B<-crlfeol>]
 [B<-I<cipher>>]
 [B<-in> I<file>]
+[B<-untrusted> I<file>]
 [B<-certfile> I<file>]
 [B<-signer> I<file>]
 [B<-nointern>]
@@ -177,7 +178,7 @@ If not specified triple DES is used. Only used with B<-encrypt>.
 
 When verifying a message normally certificates (if any) included in
 the message are searched for the signing certificate. With this option
-only the certificates specified in the B<-certfile> option are used.
+only the certificates specified in the B<-untrusted> option are used.
 The supplied certificates can still be used as untrusted CAs however.
 
 =item B<-noverify>
@@ -198,7 +199,7 @@ Don't try to verify the signatures on the message.
 When signing a message the signer's certificate is normally included
 with this option it is excluded. This will reduce the size of the
 signed message but the verifier must have a copy of the signers certificate
-available locally (passed using the B<-certfile> option for example).
+available locally (passed using the B<-untrusted> option for example).
 
 =item B<-noattr>
 
@@ -229,12 +230,17 @@ is useful when handling binary data which may not be in MIME format.
 Normally the output file uses a single B<LF> as end of line. When this
 option is present B<CRLF> is used instead.
 
+=item B<-untrusted> I<file>
+
+Allows additional untrusted certificates to be specified.
+When signing, these will be included with the message.
+When verifying,
+these will be searched for the signers certificates.
+The input can be in PEM, DER, or PKCS#12 format.
+
 =item B<-certfile> I<file>
 
-Allows additional certificates to be specified. When signing these will
-be included with the message. When verifying these will be searched for
-the signers certificates.
-The input can be in PEM, DER, or PKCS#12 format.
+This is an alias for B<-untrusted>.
 
 =item B<-signer> I<file>
 
@@ -383,7 +389,7 @@ Create a signed message, include some additional certificates and
 read the private key from another file:
 
  openssl smime -sign -in in.txt -text -out mail.msg \
-        -signer mycert.pem -inkey mykey.pem -certfile mycerts.pem
+        -signer mycert.pem -inkey mykey.pem -untrusted mycerts.pem
 
 Create a signed message with two signers:
 

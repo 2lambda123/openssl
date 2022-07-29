@@ -40,7 +40,7 @@ typedef enum OPTION_choice {
     OPT_BINARY, OPT_NOSIGS, OPT_STREAM, OPT_INDEF, OPT_NOINDEF,
     OPT_CRLFEOL, OPT_ENGINE, OPT_PASSIN,
     OPT_TO, OPT_FROM, OPT_SUBJECT, OPT_SIGNER, OPT_RECIP, OPT_MD,
-    OPT_CIPHER, OPT_INKEY, OPT_KEYFORM, OPT_CERTFILE, OPT_CAFILE,
+    OPT_CIPHER, OPT_INKEY, OPT_KEYFORM, OPT_UNTRUSTED, OPT_CERTFILE, OPT_CAFILE,
     OPT_CAPATH, OPT_CASTORE, OPT_NOCAFILE, OPT_NOCAPATH, OPT_NOCASTORE,
     OPT_R_ENUM, OPT_PROV_ENUM, OPT_CONFIG,
     OPT_V_ENUM,
@@ -96,7 +96,6 @@ const OPTIONS smime_options[] = {
     {"nosigs", OPT_NOSIGS, '-', "Don't verify message signature"},
     {"noverify", OPT_NOVERIFY, '-', "Don't verify signers certificate"},
 
-    {"certfile", OPT_CERTFILE, '<', "Other certificates file"},
     {"recip", OPT_RECIP, '<', "Recipient certificate file for decryption"},
 
     OPT_SECTION("Email"),
@@ -107,6 +106,9 @@ const OPTIONS smime_options[] = {
     {"nosmimecap", OPT_NOSMIMECAP, '-', "Omit the SMIMECapabilities attribute"},
 
     OPT_SECTION("Certificate chain"),
+    {"untrusted", OPT_UNTRUSTED, '<',
+     "Other certificates to include when signing or to use when verifying"},
+    {"certfile", OPT_CERTFILE, '<', "An alias for -untrusted"},
     {"CApath", OPT_CAPATH, '/', "Trusted certificates directory"},
     {"CAfile", OPT_CAFILE, '<', "Trusted certificates file"},
     {"CAstore", OPT_CASTORE, ':', "Trusted certificates store URI"},
@@ -136,14 +138,14 @@ int smime_main(int argc, char **argv)
     EVP_PKEY *key = NULL;
     PKCS7 *p7 = NULL;
     STACK_OF(OPENSSL_STRING) *sksigners = NULL, *skkeys = NULL;
-    STACK_OF(X509) *encerts = NULL, *other = NULL;
+    STACK_OF(X509) *encerts = NULL, *untrusted_certs = NULL;
     X509 *cert = NULL, *recip = NULL, *signer = NULL;
     X509_STORE *store = NULL;
     X509_VERIFY_PARAM *vpm = NULL;
     EVP_CIPHER *cipher = NULL;
     EVP_MD *sign_md = NULL;
     const char *CAfile = NULL, *CApath = NULL, *CAstore = NULL, *prog = NULL;
-    char *certfile = NULL, *keyfile = NULL, *contfile = NULL;
+    char *untrusted = NULL, *keyfile = NULL, *contfile = NULL;
     char *infile = NULL, *outfile = NULL, *signerfile = NULL, *recipfile = NULL;
     char *passinarg = NULL, *passin = NULL, *to = NULL, *from = NULL;
     char *subject = NULL, *digestname = NULL, *ciphername = NULL;
@@ -324,8 +326,9 @@ int smime_main(int argc, char **argv)
             if (!opt_format(opt_arg(), OPT_FMT_ANY, &keyform))
                 goto opthelp;
             break;
+        case OPT_UNTRUSTED:
         case OPT_CERTFILE:
-            certfile = opt_arg();
+            untrusted = opt_arg();
             break;
         case OPT_CAFILE:
             CAfile = opt_arg();
@@ -458,8 +461,8 @@ int smime_main(int argc, char **argv)
         }
     }
 
-    if (certfile != NULL) {
-        if (!load_certs(certfile, 0, &other, NULL, "certificates")) {
+    if (untrusted != NULL) {
+        if (!load_certs(untrusted, 0, &untrusted_certs, NULL, "certificates")) {
             ERR_print_errors(bio_err);
             goto end;
         }
@@ -546,6 +549,7 @@ int smime_main(int argc, char **argv)
         p7 = PKCS7_encrypt_ex(encerts, in, cipher, flags, libctx, app_get0_propq());
     } else if (operation & SMIME_SIGNERS) {
         int i;
+
         /*
          * If detached data content we only enable streaming if S/MIME output
          * format.
@@ -558,15 +562,13 @@ int smime_main(int argc, char **argv)
                 flags |= PKCS7_STREAM;
             }
             flags |= PKCS7_PARTIAL;
-            p7 = PKCS7_sign_ex(NULL, NULL, other, in, flags, libctx, app_get0_propq());
+            p7 = PKCS7_sign_ex(NULL, NULL, untrusted_certs, in, flags,
+                               libctx, app_get0_propq());
             if (p7 == NULL)
                 goto end;
-            if (flags & PKCS7_NOCERTS) {
-                for (i = 0; i < sk_X509_num(other); i++) {
-                    X509 *x = sk_X509_value(other, i);
-                    PKCS7_add_certificate(p7, x);
-                }
-            }
+            if ((flags & PKCS7_NOCERTS) != 0)
+                for (i = 0; i < sk_X509_num(untrusted_certs); i++)
+                    PKCS7_add_certificate(p7, sk_X509_value(untrusted_certs, i));
         } else {
             flags |= PKCS7_REUSE_DIGEST;
         }
@@ -607,13 +609,13 @@ int smime_main(int argc, char **argv)
         }
     } else if (operation == SMIME_VERIFY) {
         STACK_OF(X509) *signers;
-        if (PKCS7_verify(p7, other, store, indata, out, flags))
+        if (PKCS7_verify(p7, untrusted_certs, store, indata, out, flags))
             BIO_printf(bio_err, "Verification successful\n");
         else {
             BIO_printf(bio_err, "Verification failure\n");
             goto end;
         }
-        signers = PKCS7_get0_signers(p7, other, flags);
+        signers = PKCS7_get0_signers(p7, untrusted_certs, flags);
         if (!save_certs(signerfile, signers)) {
             BIO_printf(bio_err, "Error writing signers to %s\n", signerfile);
             ret = 5;
@@ -653,7 +655,7 @@ int smime_main(int argc, char **argv)
     if (ret)
         ERR_print_errors(bio_err);
     OSSL_STACK_OF_X509_free(encerts);
-    OSSL_STACK_OF_X509_free(other);
+    OSSL_STACK_OF_X509_free(untrusted_certs);
     X509_VERIFY_PARAM_free(vpm);
     sk_OPENSSL_STRING_free(sksigners);
     sk_OPENSSL_STRING_free(skkeys);
