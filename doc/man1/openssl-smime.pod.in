@@ -235,7 +235,9 @@ option is present B<CRLF> is used instead.
 Allows additional untrusted certificates to be specified.
 When signing, these will be included with the message.
 When verifying,
-these will be searched for the signers certificates.
+these will be searched for the signers certificates
+and will be used for certificate chain building.
+
 The input can be in PEM, DER, or PKCS#12 format.
 
 =item B<-certfile> I<file>

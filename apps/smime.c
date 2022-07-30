@@ -609,6 +609,10 @@ int smime_main(int argc, char **argv)
         }
     } else if (operation == SMIME_VERIFY) {
         STACK_OF(X509) *signers;
+        int i;
+
+        for (i = 0; i < sk_X509_num(untrusted_certs); i++)
+            PKCS7_add_certificate(p7, sk_X509_value(untrusted_certs, i));
         if (PKCS7_verify(p7, untrusted_certs, store, indata, out, flags))
             BIO_printf(bio_err, "Verification successful\n");
         else {
