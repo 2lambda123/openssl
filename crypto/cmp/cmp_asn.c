@@ -12,7 +12,7 @@
 #include <openssl/asn1t.h>
 
 #include "cmp_local.h"
-#include <crypto/crmf.h> /* for OSSL_CRMF_ATTRIBUTETYPEANDVALUE decls */
+#include "crypto/crmf.h"
 
 /* explicit #includes not strictly needed since implied by the above: */
 #include <openssl/cmp.h>
@@ -367,43 +367,101 @@ int OSSL_CMP_ITAV_get0_rootCaKeyUpdate(const OSSL_CMP_ITAV *itav,
 
 OSSL_CMP_ITAV
 *OSSL_CMP_ITAV_new0_certReqTemplate(OSSL_CRMF_CERTTEMPLATE *certTemplate,
-                                    STACK_OF(OSSL_CMP_ATAV) *keySpec)
+                                    OSSL_CMP_ATAVS *keySpec)
 {
     OSSL_CMP_ITAV *itav;
     OSSL_CMP_CERTREQTEMPLATE *tmpl;
 
-    if ((tmpl = OSSL_CMP_CERTREQTEMPLATE_new()) == NULL)
-        return NULL;
-    if ((itav = OSSL_CMP_ITAV_new()) == NULL) {
-        OSSL_CMP_CERTREQTEMPLATE_free(tmpl);
+    if (certTemplate == NULL && keySpec != NULL) {
+        ERR_raise(ERR_LIB_CMP, ERR_R_PASSED_INVALID_ARGUMENT);
         return NULL;
     }
+    if ((itav = OSSL_CMP_ITAV_new()) == NULL)
+        return NULL;
     itav->infoType = OBJ_nid2obj(NID_id_it_certReqTemplate);
+    if (certTemplate == NULL)
+        return itav;
+
+    if ((tmpl = OSSL_CMP_CERTREQTEMPLATE_new()) == NULL) {
+        OSSL_CMP_ITAV_free(itav);
+        return NULL;
+    }
     itav->infoValue.certReqTemplate = tmpl;
     tmpl->certTemplate = certTemplate;
     tmpl->keySpec = keySpec;
     return itav;
 }
 
-int OSSL_CMP_ITAV_get0_certReqTemplate(const OSSL_CMP_ITAV *itav,
+int OSSL_CMP_ITAV_get1_certReqTemplate(const OSSL_CMP_ITAV *itav,
                                        OSSL_CRMF_CERTTEMPLATE **certTemplate,
-                                       STACK_OF(OSSL_CMP_ATAV) **keySpec)
+                                       OSSL_CMP_ATAVS **keySpec)
 {
     OSSL_CMP_CERTREQTEMPLATE *req;
 
+    if (certTemplate != NULL)
+        *certTemplate = NULL;
+    if (keySpec != NULL)
+        *keySpec = NULL;
     if (itav == NULL || certTemplate == NULL) {
         ERR_raise(ERR_LIB_CMP, CMP_R_NULL_ARGUMENT);
         return 0;
     }
+
     if (OBJ_obj2nid(itav->infoType) != NID_id_it_certReqTemplate) {
         ERR_raise(ERR_LIB_CMP, ERR_R_PASSED_INVALID_ARGUMENT);
         return 0;
     }
     req = itav->infoValue.certReqTemplate;
-    *certTemplate = req == NULL ? NULL : req->certTemplate;
-    if (keySpec != NULL)
-        *keySpec = req == NULL ? NULL : req->keySpec;
+    if (req == NULL) /* no requirements available */
+        return 1;
+
+    if ((*certTemplate = OSSL_CRMF_CERTTEMPLATE_dup(req->certTemplate)) == NULL)
+        return 0;
+    if (keySpec != NULL && req->keySpec != NULL) {
+        int i, n = sk_OSSL_CMP_ATAV_num(req->keySpec);
+
+        *keySpec = sk_OSSL_CRMF_ATTRIBUTETYPEANDVALUE_new_reserve(NULL, n);
+        if (*keySpec == NULL)
+            return 0;
+        for (i = 0; i < n; i++) {
+            OSSL_CMP_ATAV *atav = sk_OSSL_CMP_ATAV_value(req->keySpec, i);
+            ASN1_OBJECT *type = OSSL_CMP_ATAV_get0_type(atav /* may be NULL */);
+            int nid;
+            const char *name;
+
+            if (type == NULL) {
+                ERR_raise_data(ERR_LIB_CMP, CMP_R_INVALID_KEYSPEC,
+                               "keySpec with index %d in certReqTemplate does not exist",
+                               i);
+                goto err;
+            }
+            nid = OBJ_obj2nid(type);
+
+            if (nid != NID_id_regCtrl_algId
+                    && nid != NID_id_regCtrl_rsaKeyLen) {
+                name = OBJ_nid2ln(nid);
+                if (name == NULL)
+                    name = OBJ_nid2sn(nid);
+                if (name == NULL)
+                    name = "<undef>";
+                ERR_raise_data(ERR_LIB_CMP, CMP_R_INVALID_KEYSPEC,
+                               "keySpec with index %d in certReqTemplate has invalid type %s",
+                               i, name);
+                goto err;
+            }
+            sk_OSSL_CRMF_ATTRIBUTETYPEANDVALUE_push(*keySpec, atav);
+            sk_OSSL_CRMF_ATTRIBUTETYPEANDVALUE_set(req->keySpec, i, NULL);
+        }
+    }
     return 1;
+
+ err:
+    OSSL_CRMF_CERTTEMPLATE_free(*certTemplate);
+    *certTemplate = NULL;
+    sk_OSSL_CMP_ATAV_pop_free(*keySpec, OSSL_CMP_ATAV_free);
+    if (keySpec != NULL)
+        *keySpec = NULL;
+    return 0;
 }
 
 OSSL_CMP_ITAV
@@ -545,6 +603,61 @@ ASN1_OBJECT *OSSL_CMP_ATAV_get0_type(const OSSL_CMP_ATAV *atav)
     return atav->type;
 }
 
+OSSL_CMP_ATAV *OSSL_CMP_ATAV_new_algId(const X509_ALGOR *alg)
+{
+    X509_ALGOR *dup;
+    OSSL_CMP_ATAV *res;
+
+    if (alg == NULL) {
+        ERR_raise(ERR_LIB_CMP, CMP_R_NULL_ARGUMENT);
+        return NULL;
+    }
+    if ((dup = X509_ALGOR_dup(alg)) == NULL)
+        return NULL;
+    res = OSSL_CMP_ATAV_create(OBJ_nid2obj(NID_id_regCtrl_algId),
+                               (ASN1_TYPE *)dup);
+    if (res == NULL)
+        X509_ALGOR_free(dup);
+    return res;
+}
+
+X509_ALGOR *OSSL_CMP_ATAV_get0_algId(const OSSL_CMP_ATAV *atav)
+{
+    if (atav == NULL || OBJ_obj2nid(atav->type) != NID_id_regCtrl_algId)
+        return NULL;
+    return atav->value.algId;
+}
+
+OSSL_CMP_ATAV *OSSL_CMP_ATAV_new_rsaKeyLen(int len)
+{
+    ASN1_INTEGER *aint;
+    OSSL_CMP_ATAV *res = NULL;
+
+    if (len <= 0) {
+        ERR_raise(ERR_LIB_CMP, ERR_R_PASSED_INVALID_ARGUMENT);
+        return NULL;
+    }
+    if ((aint = ASN1_INTEGER_new()) == NULL)
+        return NULL;
+    if (!ASN1_INTEGER_set(aint, len)
+        || (res = OSSL_CMP_ATAV_create(OBJ_nid2obj(NID_id_regCtrl_rsaKeyLen),
+                                       (ASN1_TYPE *)aint)) == NULL)
+        ASN1_INTEGER_free(aint);
+    return res;
+}
+
+int OSSL_CMP_ATAV_get_rsaKeyLen(const OSSL_CMP_ATAV *atav)
+{
+    int64_t val;
+
+    if (atav == NULL || OBJ_obj2nid(atav->type) != NID_id_regCtrl_rsaKeyLen
+            || !ASN1_INTEGER_get_int64(&val, atav->value.rsaKeyLen))
+        return -1;
+    if (val < 0 || val > INT_MAX)
+        return -2;
+    return (int)val;
+}
+
 ASN1_TYPE *OSSL_CMP_ATAV_get0_value(const OSSL_CMP_ATAV *atav)
 {
     if (atav == NULL)
@@ -552,10 +665,10 @@ ASN1_TYPE *OSSL_CMP_ATAV_get0_value(const OSSL_CMP_ATAV *atav)
     return atav->value.other;
 }
 
-int OSSL_CMP_ATAV_push0_stack_item(STACK_OF(OSSL_CMP_ATAV) **sk_p,
-                                   OSSL_CMP_ATAV *atav)
+int OSSL_CMP_ATAV_push1(OSSL_CMP_ATAVS **sk_p, const OSSL_CMP_ATAV *atav)
 {
     int created = 0;
+    OSSL_CMP_ATAV *dup;
 
     if (sk_p == NULL || atav == NULL) {
         ERR_raise(ERR_LIB_CMP, CMP_R_NULL_ARGUMENT);
@@ -567,9 +680,12 @@ int OSSL_CMP_ATAV_push0_stack_item(STACK_OF(OSSL_CMP_ATAV) **sk_p,
             goto err;
         created = 1;
     }
-    if (!sk_OSSL_CRMF_ATTRIBUTETYPEANDVALUE_push(*sk_p, atav))
+
+    if ((dup = OSSL_CRMF_ATTRIBUTETYPEANDVALUE_dup(atav)) == NULL)
         goto err;
-    return 1;
+    if (sk_OSSL_CRMF_ATTRIBUTETYPEANDVALUE_push(*sk_p, dup))
+        return 1;
+    OSSL_CRMF_ATTRIBUTETYPEANDVALUE_free(dup);
 
  err:
     if (created) {
@@ -577,16 +693,6 @@ int OSSL_CMP_ATAV_push0_stack_item(STACK_OF(OSSL_CMP_ATAV) **sk_p,
         *sk_p = NULL;
     }
     return 0;
-}
-
-OSSL_CMP_ATAV *OSSL_CMP_ATAV_dup(const OSSL_CMP_ATAV *a)
-{
-    return OSSL_CRMF_ATTRIBUTETYPEANDVALUE_dup(a);
-}
-
-void OSSL_CMP_ATAV_free(OSSL_CMP_ATAV *a)
-{
-    OSSL_CRMF_ATTRIBUTETYPEANDVALUE_free(a);
 }
 
 /* get ASN.1 encoded integer, return -1 on error */

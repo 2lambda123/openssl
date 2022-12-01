@@ -16,7 +16,7 @@
 
 # include <openssl/crmf.h>
 # include <openssl/err.h>
-# include <crypto/crmf.h> /* for OSSL_CRMF_ATTRIBUTETYPEANDVALUE decls */
+# include <crypto/crmf.h> /* for ossl_crmf_attributetypeandvalue_st */
 
 /* explicit #includes not strictly needed since implied by the above: */
 # include <openssl/types.h>
@@ -335,7 +335,7 @@ struct ossl_crmf_certrequest_st {
 DECLARE_ASN1_FUNCTIONS(OSSL_CRMF_CERTREQUEST)
 DECLARE_ASN1_DUP_FUNCTION(OSSL_CRMF_CERTREQUEST)
 
-/* OSSL_CRMF_ATTRIBUTETYPEANDVALUE decls are in include/crypto/crmf.h */
+/* ossl_crmf_attributetypeandvalue_st decl is in include/crypto/crmf.h */
 
 /*-
  * CertReqMessages ::= SEQUENCE SIZE (1..MAX) OF CertReqMsg
