@@ -129,7 +129,6 @@ ASN1_ADB(OSSL_CMP_ITAV) = {
 } ASN1_ADB_END(OSSL_CMP_ITAV, 0, infoType, 0,
                &infotypeandvalue_default_tt, NULL);
 
-
 ASN1_SEQUENCE(OSSL_CMP_ITAV) = {
     ASN1_SIMPLE(OSSL_CMP_ITAV, infoType, ASN1_OBJECT),
     ASN1_ADB_OBJECT(OSSL_CMP_ITAV)
@@ -165,6 +164,8 @@ ASN1_SEQUENCE(OSSL_CMP_CRLSTATUS) = {
     ASN1_OPT(OSSL_CMP_CRLSTATUS, thisUpdate, ASN1_TIME)
 } ASN1_SEQUENCE_END(OSSL_CMP_CRLSTATUS)
 IMPLEMENT_ASN1_FUNCTIONS(OSSL_CMP_CRLSTATUS)
+
+IMPLEMENT_ASN1_DUP_FUNCTION(DIST_POINT_NAME)
 
 OSSL_CMP_ITAV *OSSL_CMP_ITAV_create(ASN1_OBJECT *type, ASN1_TYPE *value)
 {
@@ -491,9 +492,9 @@ int OSSL_CMP_ITAV_get0_crlStatusList(const OSSL_CMP_ITAV *itav,
     return 1;
 }
 
-OSSL_CMP_CRLSTATUS *OSSL_CMP_CRLSTATUS_new0(DIST_POINT_NAME *dpn,
-                                            GENERAL_NAMES *issuer,
-                                            ASN1_TIME *thisUpdate)
+OSSL_CMP_CRLSTATUS *OSSL_CMP_CRLSTATUS_new1(const DIST_POINT_NAME *dpn,
+                                            const GENERAL_NAMES *issuer,
+                                            const ASN1_TIME *thisUpdate)
 {
     OSSL_CMP_CRLSOURCE *crlsource;
     OSSL_CMP_CRLSTATUS *crlstatus;
@@ -506,22 +507,31 @@ OSSL_CMP_CRLSTATUS *OSSL_CMP_CRLSTATUS_new0(DIST_POINT_NAME *dpn,
         ERR_raise(ERR_LIB_CMP, ERR_R_PASSED_INVALID_ARGUMENT);
         return NULL;
     }
-    if ((crlsource = OSSL_CMP_CRLSOURCE_new()) == NULL)
+
+    if ((crlstatus = OSSL_CMP_CRLSTATUS_new()) == NULL)
         return NULL;
-    if ((crlstatus = OSSL_CMP_CRLSTATUS_new()) == NULL) {
-        OSSL_CMP_CRLSOURCE_free(crlsource);
-        return NULL;
-    }
+    crlsource = crlstatus->source;
+
     if (dpn != NULL) {
         crlsource->type = OSSL_CMP_CRLSOURCE_DPN;
-        crlsource->value.dpn = dpn;
+        if ((crlsource->value.dpn = DIST_POINT_NAME_dup(dpn)) == NULL)
+            goto err;
     } else {
         crlsource->type = OSSL_CMP_CRLSOURCE_ISSUER;
-        crlsource->value.issuer = issuer;
+        if ((crlsource->value.issuer =
+             sk_GENERAL_NAME_deep_copy(issuer, GENERAL_NAME_dup,
+                                       GENERAL_NAME_free)) == NULL)
+            goto err;
     }
-    crlstatus->source = crlsource;
-    crlstatus->thisUpdate = thisUpdate;
+
+    if (thisUpdate != NULL
+            && (crlstatus->thisUpdate = ASN1_TIME_dup(thisUpdate)) == NULL)
+        goto err;
     return crlstatus;
+
+ err:
+    OSSL_CMP_CRLSTATUS_free(crlstatus);
+    return NULL;
 }
 
 int OSSL_CMP_CRLSTATUS_get0(const OSSL_CMP_CRLSTATUS *crlstatus,

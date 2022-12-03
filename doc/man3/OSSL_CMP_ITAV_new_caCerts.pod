@@ -10,7 +10,7 @@ OSSL_CMP_ITAV_new_rootCaKeyUpdate,
 OSSL_CMP_ITAV_get0_rootCaKeyUpdate,
 OSSL_CMP_ITAV_new0_certReqTemplate,
 OSSL_CMP_ITAV_get1_certReqTemplate,
-OSSL_CMP_CRLSTATUS_new0,
+OSSL_CMP_CRLSTATUS_new1,
 OSSL_CMP_CRLSTATUS_get0,
 OSSL_CMP_ITAV_new0_crlStatusList,
 OSSL_CMP_ITAV_get0_crlStatusList,
@@ -39,9 +39,9 @@ OSSL_CMP_ITAV_get0_crls
  int OSSL_CMP_ITAV_get1_certReqTemplate(const OSSL_CMP_ITAV *itav,
                                         OSSL_CRMF_CERTTEMPLATE **certTemplate,
                                         OSSL_CMP_ATAVS **keySpec);
- OSSL_CMP_CRLSTATUS *OSSL_CMP_CRLSTATUS_new0(DIST_POINT_NAME *dpn,
-                                             GENERAL_NAMES *issuer,
-                                             ASN1_TIME *thisUpdate);
+ OSSL_CMP_CRLSTATUS *OSSL_CMP_CRLSTATUS_new1(const DIST_POINT_NAME *dpn,
+                                             const GENERAL_NAMES *issuer,
+                                             const ASN1_TIME *thisUpdate);
  int OSSL_CMP_CRLSTATUS_get0(const OSSL_CMP_CRLSTATUS *crlstatus,
                              DIST_POINT_NAME **dpn, GENERAL_NAMES **issuer,
                              ASN1_TIME **thisUpdate);
@@ -112,10 +112,10 @@ if the structure is not present in I<itav> or the keySpec field is absent.
 Otherwise, the function checks that all elements of keySpec field are of type
 B<algId> or B<rsaKeyLen> and assigns to I<*keySpec> a copy of the keySpec field.
 
-OSSL_CMP_CRLSTATUS_new0() creates a new B<OSSL_CMP_CRLSTATUS> structure
-that contains either the distribution point name I<dpn>
-or the certificate issuer I<issuer>, while giving both is an error.
-If given, the optional CRL issuance time I<thisUpdate> is also included.
+OSSL_CMP_CRLSTATUS_new1() allocates a new B<OSSL_CMP_CRLSTATUS> structure
+that contains either a copy of the distribution point name I<dpn>
+or a copy of the certificate issuer I<issuer>, while giving both is an error.
+If given, a copy of the CRL issuance time I<thisUpdate> is also included.
 
 OSSL_CMP_CRLSTATUS_get0() reads the fields of I<crlstatus>
 and assigns them to either I<*dpn> or I<*issuer>, and to I<*thisUpdate>.
@@ -147,7 +147,7 @@ CMP is defined in RFC 4210.
 
 OSSL_CMP_ITAV_new_caCerts(), OSSL_CMP_ITAV_new_rootCaCert(),
 OSSL_CMP_ITAV_new_rootCaKeyUpdate(), OSSL_CMP_ITAV_new0_certReqTemplate(),
-OSSL_CMP_CRLSTATUS_new0(), OSSL_CMP_ITAV_new0_crlStatusList(),
+OSSL_CMP_CRLSTATUS_new1(), OSSL_CMP_ITAV_new0_crlStatusList(),
 and OSSL_CMP_ITAV_new0_crls()
 return a pointer to the new ITAV structure on success, or NULL on error.
 
