@@ -1051,6 +1051,13 @@ static OSSL_CMP_SRV_CTX *setup_srv_ctx(ENGINE *engine)
                      (add_X509_stack_fn_t)OSSL_CMP_CTX_set1_untrusted))
         goto err;
 
+    if (opt_ignore_keyusage)
+        (void)OSSL_CMP_CTX_set_option(ctx, OSSL_CMP_OPT_IGNORE_KEYUSAGE, 1);
+    if (opt_send_unprotected)
+        (void)OSSL_CMP_CTX_set_option(ctx, OSSL_CMP_OPT_UNPROTECTED_SEND, 1);
+    if (opt_accept_unprot_err)
+        (void)OSSL_CMP_CTX_set_option(ctx, OSSL_CMP_OPT_UNPROTECTED_ERRORS, 1);
+
     if (opt_ref_cert != NULL) {
         X509 *cert = load_cert_pwd(opt_ref_cert, opt_keypass,
                                    "reference cert to be expected by the mock server");
@@ -1111,14 +1118,10 @@ static OSSL_CMP_SRV_CTX *setup_srv_ctx(ENGINE *engine)
     if (opt_send_error)
         (void)ossl_cmp_mock_srv_set_sendError(srv_ctx, 1);
 
-    if (opt_send_unprotected)
-        (void)OSSL_CMP_CTX_set_option(ctx, OSSL_CMP_OPT_UNPROTECTED_SEND, 1);
     if (opt_send_unprot_err)
         (void)OSSL_CMP_SRV_CTX_set_send_unprotected_errors(srv_ctx, 1);
     if (opt_accept_unprotected)
         (void)OSSL_CMP_SRV_CTX_set_accept_unprotected(srv_ctx, 1);
-    if (opt_accept_unprot_err)
-        (void)OSSL_CMP_CTX_set_option(ctx, OSSL_CMP_OPT_UNPROTECTED_ERRORS, 1);
     if (opt_accept_raverified)
         (void)OSSL_CMP_SRV_CTX_set_accept_raverified(srv_ctx, 1);
 
