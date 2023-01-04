@@ -1,4 +1,4 @@
-# Copyright 1999-2022 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 1999-2023 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -269,6 +269,7 @@ CMP_R_TRANSFER_ERROR:159:transfer error
 CMP_R_UNEXPECTED_PKIBODY:133:unexpected pkibody
 CMP_R_UNEXPECTED_PKISTATUS:185:unexpected pkistatus
 CMP_R_UNEXPECTED_PVNO:153:unexpected pvno
+CMP_R_UNEXPECTED_SENDER:183:unexpected sender
 CMP_R_UNKNOWN_ALGORITHM_ID:134:unknown algorithm id
 CMP_R_UNKNOWN_CERT_TYPE:135:unknown cert type
 CMP_R_UNKNOWN_PKISTATUS:186:unknown pkistatus
