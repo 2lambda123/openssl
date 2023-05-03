@@ -212,11 +212,6 @@ static int delayed_delivery(OSSL_CMP_SRV_CTX *srv_ctx, const OSSL_CMP_MSG *req)
 
     if (ctx->pollCount > 0 && ctx->curr_pollCount == 0) {
         /* start polling */
-        if (ctx->req != NULL) { /* TODO: move this check to cmp_server.c */
-            /* already in polling mode */
-            ERR_raise(ERR_LIB_CMP, CMP_R_UNEXPECTED_PKIBODY);
-            return -1;
-        }
         if ((ctx->req = OSSL_CMP_MSG_dup(req)) == NULL)
             return -1;
         return 1;
@@ -285,19 +280,10 @@ static OSSL_CMP_PKISI *process_cert_request(OSSL_CMP_SRV_CTX *srv_ctx,
 
     if (ctx->pollCount > 0 && ctx->curr_pollCount == 0) {
         /* start polling */
-        if (ctx->req != NULL) {
-            /* already in polling mode */
-            ERR_raise(ERR_LIB_CMP, CMP_R_UNEXPECTED_PKIBODY);
-            return NULL;
-        }
         if ((ctx->req = OSSL_CMP_MSG_dup(cert_req)) == NULL)
             return NULL;
         return OSSL_CMP_STATUSINFO_new(OSSL_CMP_PKISTATUS_waiting, 0, NULL);
     }
-    if (ctx->curr_pollCount >= ctx->pollCount)
-        /* give final response after polling */
-        ctx->curr_pollCount = 0;
-
     /* accept cert update request only for the reference cert, if given */
     if (OSSL_CMP_MSG_get_bodytype(cert_req) == OSSL_CMP_KUR
             && crm != NULL /* thus not p10cr */ && ctx->refCert != NULL) {
